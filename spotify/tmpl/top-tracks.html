@@ -6,15 +6,27 @@
 <h1>{{.Name}} - Top Tracks</h1>
 <table>
   <tr>
-    <th align="left">ID</th>
-    <th align="left">Artist</th>
-    <th align="left">Title</th>
+    <th align="left">Art</th>
+    <th align="left">Title<br />Artist</th>
+    <th align="left">Key</th>
+    <th align="left">Tempo</th>
+    <th align="left">Loudness</th>
+    <th align="left">Happiness</th>
+    <th align="left">Energy</th>
+    <th align="left">Danceability</th>
+    <th align="left">Acousticness</th>
   </tr>
   {{range .Items}}
   <tr>
-    <td>{{.ID}}</td>
-    <td>{{.Artist}}</td>
-    <td>{{.Title}}</td>
+    <td><img src="{{.ImageURL}}" style="width: 50px; height: 50px" /></td>
+    <td>{{.Title}}<br />{{.Artist}}</td>
+    <td>{{.Key}}</td>
+    <td>{{.Tempo}}</td>
+    <td>{{.Loudness}}</td>
+    <td>{{.Happiness}}</td>
+    <td>{{.Energy}}</td>
+    <td>{{.Danceability}}</td>
+    <td>{{.Acousticness}}</td>
   </tr>
   {{end}}
 </table>

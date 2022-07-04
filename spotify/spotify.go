@@ -36,6 +36,49 @@ func renderTopTracksTemplate(w http.ResponseWriter, p *TopTracksPage) {
 	}
 }
 
+func parsePercent(p float64) string {
+	return fmt.Sprintf("%.0f", (p*100)) + "%"
+}
+
+func parseKey(k int) string {
+	switch k {
+	case 0:
+		return "C"
+	case 1:
+		return "C♯"
+	case 2:
+		return "D"
+	case 3:
+		return "D♯"
+	case 4:
+		return "E"
+	case 5:
+		return "F"
+	case 6:
+		return "F♯"
+	case 7:
+		return "G"
+	case 8:
+		return "G♯"
+	case 9:
+		return "A"
+	case 10:
+		return "A♯"
+	case 11:
+		return "B"
+	default:
+		return "??"
+	}
+}
+
+func parseTempo(t float64) string {
+	return fmt.Sprintf("%.0f BPM", t)
+}
+
+func parseLoudness(l float64) string {
+	return fmt.Sprintf("%.0f db", l)
+}
+
 type TopTracksResponse struct {
 	Items []struct {
 		Album struct {
@@ -107,16 +150,24 @@ type TopTracksResponse struct {
 }
 
 type TopTracksNode struct {
-	ID     string
-	Artist string
-	Title  string
+	ID           string
+	Artist       string
+	Title        string
+	ImageURL     string
+	Key          string
+	Tempo        string
+	Loudness     string
+	Happiness    string
+	Energy       string
+	Danceability string
+	Acousticness string
 }
 
 func topTracksHandler(w http.ResponseWriter, r *http.Request) {
 	authheader := fmt.Sprintf("Bearer %s", os.Getenv("SPOTIFY_API_TOKEN"))
 
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me/top/tracks?limit=10", nil)
+	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me/top/tracks?limit=50", nil)
 	if err != nil {
 		log.Printf("Got error %s", err)
 		return
@@ -140,10 +191,23 @@ func topTracksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	toptracks := make([]TopTracksNode, 0)
 	for _, rec := range result.Items {
+		analysis, err := getTrackAnalysis(rec.ID)
+		if err != nil {
+			log.Printf("could not find track analyisis for" + rec.ID)
+			log.Print(err)
+		}
 		toptracks = append(toptracks, TopTracksNode{
-			ID:     rec.ID,
-			Artist: rec.Artists[0].Name,
-			Title:  rec.Name,
+			ID:           rec.ID,
+			Artist:       rec.Artists[0].Name,
+			Title:        rec.Name,
+			ImageURL:     rec.Album.Images[0].URL,
+			Key:          parseKey(analysis.Key),
+			Tempo:        parseTempo(analysis.Tempo),
+			Loudness:     parseLoudness(analysis.Loudness),
+			Happiness:    parsePercent(analysis.Valence),
+			Energy:       parsePercent(analysis.Energy),
+			Danceability: parsePercent(analysis.Danceability),
+			Acousticness: parsePercent(analysis.Acousticness),
 		})
 	}
 	log.Print(toptracks)
@@ -154,8 +218,6 @@ func topTracksHandler(w http.ResponseWriter, r *http.Request) {
 
 	renderTopTracksTemplate(w, data)
 }
-
-// func topTracksHandler() {}
 
 func generateRandomString(n int) string {
 	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
@@ -374,6 +436,58 @@ func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	querystring := string(val.Encode())
 	http.Redirect(w, r, "/#"+querystring, http.StatusFound)
+}
+
+type TrackAnalysisResponse struct {
+	Danceability     float64 `json:"danceability"`
+	Energy           float64 `json:"energy"`
+	Key              int     `json:"key"`
+	Loudness         float64 `json:"loudness"`
+	Mode             int     `json:"mode"`
+	Speechiness      float64 `json:"speechiness"`
+	Acousticness     float64 `json:"acousticness"`
+	Instrumentalness float64 `json:"instrumentalness"`
+	Liveness         float64 `json:"liveness"`
+	Valence          float64 `json:"valence"`
+	Tempo            float64 `json:"tempo"`
+	Type             string  `json:"type"`
+	ID               string  `json:"id"`
+	URI              string  `json:"uri"`
+	TrackHref        string  `json:"track_href"`
+	AnalysisURL      string  `json:"analysis_url"`
+	DurationMs       int     `json:"duration_ms"`
+	TimeSignature    int     `json:"time_signature"`
+}
+
+func getTrackAnalysis(id string) (*TrackAnalysisResponse, error) {
+	authheader := fmt.Sprintf("Bearer %s", os.Getenv("SPOTIFY_API_TOKEN"))
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/audio-features/"+id, nil)
+	if err != nil {
+		log.Printf("Got error %s", err)
+		return nil, err
+	}
+	req.Header.Set("Authorization", authheader)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Got error %s", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Got error %s", err)
+		return nil, err
+	}
+	//log.Print(string(body))
+	var result TrackAnalysisResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Print("Unable to unmarshal JSON response.")
+		log.Print(err)
+	}
+	return &result, nil
 }
 
 func main() {

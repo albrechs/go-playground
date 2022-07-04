@@ -171,6 +171,38 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type MeResponse struct {
+	Country         string `json:"country"`
+	DisplayName     string `json:"display_name"`
+	Email           string `json:"email"`
+	ExplicitContent struct {
+		FilterEnabled bool `json:"filter_enabled"`
+		FilterLocked  bool `json:"filter_locked"`
+	} `json:"explicit_content"`
+	ExternalUrls struct {
+		Spotify string `json:"spotify"`
+	} `json:"external_urls"`
+	Followers struct {
+		Href  interface{} `json:"href"`
+		Total int         `json:"total"`
+	} `json:"followers"`
+	Href   string `json:"href"`
+	ID     string `json:"id"`
+	Images []struct {
+		Height interface{} `json:"height"`
+		URL    string      `json:"url"`
+		Width  interface{} `json:"width"`
+	} `json:"images"`
+	Product string `json:"product"`
+	Type    string `json:"type"`
+	URI     string `json:"uri"`
+}
+
+type CallbackRedirectQuery struct {
+	AccessToken  string `url:"access_token"`
+	RefreshToken string `url:"refresh_token"`
+}
+
 func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	code := q.Get("code")
@@ -223,7 +255,92 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println("unable to unmarshall tokenresponse")
 		}
 		log.Println(result.AccessToken)
+
+		mereq, meerr := http.NewRequest("GET", "https://api.spotify.com/v1/me", nil)
+		if meerr != nil {
+			fmt.Errorf("error: %s", meerr)
+			return
+		}
+		mereq.Header.Set("Authorization", "Bearer "+result.AccessToken)
+		meres, meerr := client.Do(mereq)
+		if meerr != nil {
+			fmt.Errorf("got error %s", err)
+			return
+		}
+		defer meres.Body.Close()
+		mebody, meerr := ioutil.ReadAll(meres.Body)
+		if meerr != nil {
+			fmt.Errorf("got error %s", err)
+			return
+		}
+		log.Print(string(mebody))
+
+		os.Setenv("SPOTIFY_API_TOKEN", result.AccessToken)
+		callbackquery := CallbackRedirectQuery{
+			AccessToken:  result.AccessToken,
+			RefreshToken: result.RefreshToken,
+		}
+		val, err := query.Values(callbackquery)
+		if err != nil {
+			log.Println("unable to parse login query values")
+			return
+		}
+		querystring := string(val.Encode())
+		http.Redirect(w, r, "/#"+querystring, http.StatusFound)
 	}
+}
+
+type TokenRefreshResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	refreshtoken := q.Get("refresh_token")
+
+	client := &http.Client{}
+	formdata := url.Values{
+		"refresh_token": {refreshtoken},
+		"grant_type":    {"refresh_token"},
+	}
+	req, err := http.NewRequest("POST", "https://accounts.spotify.com/api/token", bytes.NewBufferString(formdata.Encode()))
+	if err != nil {
+		fmt.Errorf("error: %s", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
+	authstring := clientid + ":" + clientsecret
+	authencoded := base64.StdEncoding.EncodeToString([]byte(authstring))
+	req.Header.Set("Authorization", "Basic "+authencoded)
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Errorf("got error %s", err)
+		return
+	}
+	defer res.Body.Close()
+	refreshbody, refresherr := ioutil.ReadAll(res.Body)
+	if refresherr != nil {
+		fmt.Errorf("got error %s", err)
+		return
+	}
+	var result TokenResponse
+	if err := json.Unmarshal(refreshbody, &result); err != nil {
+		log.Println("unable to unmarshall tokenresponse")
+	}
+	log.Println(result.AccessToken)
+	os.Setenv("SPOTIFY_API_TOKEN", result.AccessToken)
+	callbackquery := CallbackRedirectQuery{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+	}
+	val, err := query.Values(callbackquery)
+	if err != nil {
+		log.Println("unable to parse login query values")
+		return
+	}
+	querystring := string(val.Encode())
+	http.Redirect(w, r, "/#"+querystring, http.StatusFound)
 }
 
 func main() {
@@ -233,6 +350,7 @@ func main() {
 
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/callback", callbackHandler)
+	http.HandleFunc("/refresh_token", refreshTokenHandler)
 	//http.HandleFunc("/top-tracks", topTracksHandler)
 	//http.HandleFunc("/track/", trackHandler)
 
@@ -242,6 +360,6 @@ func main() {
 	http.Handle("/", fileServer)
 
 	addr := fmt.Sprintf("localhost:%d", port)
-	fmt.Printf("Serving app at http://%s", addr)
+	log.Printf("Serving app at http://%s", addr)
 	log.Fatalln(http.ListenAndServe(addr, nil))
 }

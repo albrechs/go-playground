@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -17,7 +18,25 @@ import (
 	"github.com/google/go-querystring/query"
 )
 
-/* type TopTracksResponse struct {
+var clientid = "58f7888547c24f058ece41fed973bf37"     // Your client id
+var clientsecret = "8405db97ae294a9885f064855b5fae79" // Your secret
+var redirecturi = "http://localhost:8888/callback"    // Your redirect uri
+var statekey = "spotify_auth_state"
+var templates = template.Must(template.ParseFiles("tmpl/top-tracks.html"))
+
+type TopTracksPage struct {
+	Name  string
+	Items []TopTracksNode
+}
+
+func renderTopTracksTemplate(w http.ResponseWriter, p *TopTracksPage) {
+	e := templates.ExecuteTemplate(w, "top-tracks.html", p)
+	if e != nil {
+		http.Error(w, e.Error(), http.StatusInternalServerError)
+	}
+}
+
+type TopTracksResponse struct {
 	Items []struct {
 		Album struct {
 			AlbumType string `json:"album_type"`
@@ -85,42 +104,56 @@ import (
 	Href     string      `json:"href"`
 	Previous interface{} `json:"previous"`
 	Next     string      `json:"next"`
-} */
+}
 
-/* func main() {
+type TopTracksNode struct {
+	ID     string
+	Artist string
+	Title  string
+}
+
+func topTracksHandler(w http.ResponseWriter, r *http.Request) {
 	authheader := fmt.Sprintf("Bearer %s", os.Getenv("SPOTIFY_API_TOKEN"))
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me/top/tracks?limit=10", nil)
 	if err != nil {
-		fmt.Errorf("Got error %s", err)
+		log.Printf("Got error %s", err)
 		return
 	}
 	req.Header.Set("Authorization", authheader)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Errorf("Got error %s", err)
+		log.Printf("Got error %s", err)
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-
+	if err != nil {
+		log.Printf("Got error %s", err)
+		return
+	}
 	var result TopTracksResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Println("Unable to unmarshal JSON response.")
+		log.Print("Unable to unmarshal JSON response.")
 	}
-
+	toptracks := make([]TopTracksNode, 0)
 	for _, rec := range result.Items {
-		trackdetails := fmt.Sprintf("%s\t%s - %s", rec.ID, rec.Artists[0].Name, rec.Name)
-		fmt.Println(trackdetails)
+		toptracks = append(toptracks, TopTracksNode{
+			ID:     rec.ID,
+			Artist: rec.Artists[0].Name,
+			Title:  rec.Name,
+		})
 	}
-} */
+	log.Print(toptracks)
+	data := &TopTracksPage{
+		Name:  "Trevor",
+		Items: toptracks,
+	}
 
-var clientid = "58f7888547c24f058ece41fed973bf37"     // Your client id
-var clientsecret = "8405db97ae294a9885f064855b5fae79" // Your secret
-var redirecturi = "http://localhost:8888/callback"    // Your redirect uri
-var statekey = "spotify_auth_state"
+	renderTopTracksTemplate(w, data)
+}
 
 // func topTracksHandler() {}
 
@@ -235,7 +268,7 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		req, err := http.NewRequest("POST", "https://accounts.spotify.com/api/token", bytes.NewBufferString(formdata.Encode()))
 		if err != nil {
-			fmt.Errorf("error: %s", err)
+			log.Printf("error: %s", err)
 			return
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
@@ -245,7 +278,7 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 		res, err := client.Do(req)
 		if err != nil {
-			fmt.Errorf("got error %s", err)
+			log.Printf("got error %s", err)
 			return
 		}
 		defer res.Body.Close()
@@ -258,19 +291,19 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 
 		mereq, meerr := http.NewRequest("GET", "https://api.spotify.com/v1/me", nil)
 		if meerr != nil {
-			fmt.Errorf("error: %s", meerr)
+			log.Printf("error: %s", meerr)
 			return
 		}
 		mereq.Header.Set("Authorization", "Bearer "+result.AccessToken)
 		meres, meerr := client.Do(mereq)
 		if meerr != nil {
-			fmt.Errorf("got error %s", err)
+			log.Printf("got error %s", err)
 			return
 		}
 		defer meres.Body.Close()
 		mebody, meerr := ioutil.ReadAll(meres.Body)
 		if meerr != nil {
-			fmt.Errorf("got error %s", err)
+			log.Printf("got error %s", err)
 			return
 		}
 		log.Print(string(mebody))
@@ -305,7 +338,7 @@ func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	req, err := http.NewRequest("POST", "https://accounts.spotify.com/api/token", bytes.NewBufferString(formdata.Encode()))
 	if err != nil {
-		fmt.Errorf("error: %s", err)
+		log.Printf("error: %s", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; param=value")
@@ -315,13 +348,13 @@ func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	res, err := client.Do(req)
 	if err != nil {
-		fmt.Errorf("got error %s", err)
+		log.Printf("got error %s", err)
 		return
 	}
 	defer res.Body.Close()
 	refreshbody, refresherr := ioutil.ReadAll(res.Body)
 	if refresherr != nil {
-		fmt.Errorf("got error %s", err)
+		log.Printf("got error %s", err)
 		return
 	}
 	var result TokenResponse
@@ -351,7 +384,7 @@ func main() {
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/callback", callbackHandler)
 	http.HandleFunc("/refresh_token", refreshTokenHandler)
-	//http.HandleFunc("/top-tracks", topTracksHandler)
+	http.HandleFunc("/top-tracks", topTracksHandler)
 	//http.HandleFunc("/track/", trackHandler)
 
 	var frontend fs.FS = os.DirFS("public")

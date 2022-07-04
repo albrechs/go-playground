@@ -1,4 +1,4 @@
-module test/spotify
+module spotify
 
 go 1.18
 

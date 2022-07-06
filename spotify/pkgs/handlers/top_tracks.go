@@ -9,6 +9,7 @@ import (
 	"os"
 	"spotify/pkgs/helpers"
 	"spotify/pkgs/structs"
+	"strconv"
 )
 
 func TopTracks(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +47,7 @@ func TopTracks(w http.ResponseWriter, r *http.Request) {
 		}
 		toptracks = append(toptracks, structs.TopTracksNode{
 			ID:           rec.ID,
+			Popularity:   strconv.Itoa(rec.Popularity),
 			Artist:       rec.Artists[0].Name,
 			Title:        rec.Name,
 			ImageURL:     rec.Album.Images[0].URL,

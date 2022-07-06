@@ -7,6 +7,7 @@ type TopTracksPage struct {
 
 type TopTracksNode struct {
 	ID           string
+	Popularity   string
 	Artist       string
 	Title        string
 	ImageURL     string

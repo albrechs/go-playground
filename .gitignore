@@ -43,7 +43,7 @@ _testmain.go
 /test/pass.out
 /test/run.out
 /test/times.out
-
+.env
 # build artifacts
 /spotify/spotify
 /wiki/wiki
